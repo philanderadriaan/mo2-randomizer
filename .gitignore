@@ -1,0 +1,8 @@
+
+*.properties
+.classpath
+.project
+*.class
+*.prefs
+*.MF
+target/classes/META-INF/maven/mo2-randomizer/mo2-randomizer/pom.xml
