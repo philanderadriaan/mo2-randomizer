@@ -1,6 +1,7 @@
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -23,6 +24,7 @@ public class MO2Randomizer {
   private static final Properties PROPERTIES = new Properties();
 
   private static String selectedVariant = null;
+  private static String destinationModName;
 
   public static void main(String[] args) throws Exception {
     try {
@@ -32,58 +34,40 @@ public class MO2Randomizer {
       List<String> variantHistoryList = new ArrayList<String>(Arrays.asList(PROPERTIES.getProperty(PROPERTIES_HISTORY_NAME).split(",")));
 
       for (File sourceGroup : new File(PROPERTIES.getProperty("source.directory")).listFiles()) {
-        File sourceMod = rename(shuffle(sourceGroup).get(0));
+        File sourceMod = rename(shuffle(sourceGroup).get(0), null);
 
         for (File sourcePart : sourceMod.listFiles()) {
           List<File> sourceArchiveList = shuffle(sourcePart);
-          if (sourceArchiveList.size() <= variantHistoryList.size()) {
-            variantHistoryList.clear();
-          }
-          for (File sourceArchive : sourceArchiveList) {
-            String sourceArchiveBaseName = FilenameUtils.getBaseName(sourceArchive.getName());
-            selectedVariant = selectedVariant == null && !variantHistoryList.contains(sourceArchiveBaseName) ? sourceArchiveBaseName : selectedVariant;
+          destinationModName = "RANDOM" + sourceGroup.getName() + sourcePart.getName();
+          File destinationMod = new File(PROPERTIES.getProperty("destination.directory") + "\\" + destinationModName);
+          if (sourceArchiveList.size() == 1) {
+            File sourceArchive = rename(sourceArchiveList.get(0), null);
+            extract(sourceArchive, destinationMod);
+          } else {
+            if (sourceArchiveList.size() <= variantHistoryList.size()) {
+              variantHistoryList.clear();
+            }
+            for (File sourceArchive : sourceArchiveList) {
+              String sourceArchiveBaseName = FilenameUtils.getBaseName(sourceArchive.getName());
 
-            if (sourceArchiveBaseName.equals(selectedVariant)) {
-              File destinationMod = new File(PROPERTIES.getProperty("destination.directory") + "\\RANDOM " + sourceGroup.getName() + sourcePart.getName());
-              log("Delete");
-              for (File destinationFile : destinationMod.listFiles()) {
-                if (!destinationFile.getName().equalsIgnoreCase("meta.ini")) {
-                  log(destinationFile.getAbsolutePath());
-                  FileUtils.deleteDirectory(destinationFile);
-                }
+              if (selectedVariant == null && !variantHistoryList.contains(sourceArchiveBaseName)) {
+                selectedVariant = sourceArchiveBaseName;
+                variantHistoryList.add(selectedVariant);
               }
 
-              log("Extract", sourceArchive.getAbsolutePath());
-              SevenZFile zFile = new SevenZFile(sourceArchive);
-              SevenZArchiveEntry zEntry = zFile.getNextEntry();
-              while ((zEntry = zFile.getNextEntry()) != null) {
-                if (!zEntry.isDirectory()) {
-                  log(zEntry.getName());
-
-                  File newFile = new File(destinationMod.getAbsolutePath(), zEntry.getName());
-                  File parentDirectory = newFile.getParentFile();
-                  if (!parentDirectory.exists()) {
-                    parentDirectory.mkdirs();
-                  }
-
-                  FileOutputStream stream = new FileOutputStream(newFile);
-                  byte[] bytes = new byte[(int) zEntry.getSize()];
-                  zFile.read(bytes, 0, bytes.length);
-                  stream.write(bytes);
-                  stream.close();
-                }
+              if (sourceArchiveBaseName.equals(selectedVariant)) {
+                extract(sourceArchive, destinationMod);
               }
-              zFile.close();
-              variantHistoryList.add(selectedVariant);
             }
           }
         }
       }
 
-      log(selectedVariant);
-
       PROPERTIES.put(PROPERTIES_HISTORY_NAME, String.join(",", variantHistoryList));
       PROPERTIES.store(new FileOutputStream(PROPERTIES_FILE_NAME), null);
+
+      log(selectedVariant);
+      log(variantHistoryList.toString());
 
     } catch (Exception exception) {
       JOptionPane.showMessageDialog(null, exception.getMessage(), exception.getClass().toString(), JOptionPane.ERROR_MESSAGE);
@@ -91,9 +75,49 @@ public class MO2Randomizer {
     }
   }
 
-  private static File rename(File file) {
+  private static void extract(File sourceArchive, File destinationDirectory) throws IOException {
+    log("Delete");
+    for (File destinationFile : destinationDirectory.listFiles()) {
+      if (!destinationFile.getName().equalsIgnoreCase("meta.ini")) {
+        log(destinationFile.getAbsolutePath());
+        if (destinationFile.isDirectory()) {
+          FileUtils.deleteDirectory(destinationFile);
+        } else {
+          destinationFile.delete();
+        }
+      }
+    }
+
+    log("Extract", sourceArchive.getAbsolutePath());
+    SevenZFile zFile = new SevenZFile(sourceArchive);
+    SevenZArchiveEntry zEntry = zFile.getNextEntry();
+    while ((zEntry = zFile.getNextEntry()) != null) {
+      if (!zEntry.isDirectory()) {
+        log(zEntry.getName());
+
+        File extractedFile = new File(destinationDirectory.getAbsolutePath(), zEntry.getName());
+        File parentDirectory = extractedFile.getParentFile();
+        if (!parentDirectory.exists()) {
+          parentDirectory.mkdirs();
+        }
+
+        FileOutputStream stream = new FileOutputStream(extractedFile);
+        byte[] bytes = new byte[(int) zEntry.getSize()];
+        zFile.read(bytes, 0, bytes.length);
+        stream.write(bytes);
+        stream.close();
+
+        if (FilenameUtils.getExtension(extractedFile.getName()).equals("esp")) {
+          extractedFile = rename(extractedFile, destinationModName);
+        }
+      }
+    }
+    zFile.close();
+  }
+
+  private static File rename(File file, String newName) {
     String extension = FilenameUtils.getExtension(file.getName());
-    File newFile = new File(file.getParent() + '\\' + System.currentTimeMillis() + (file.isFile() ? "." + extension : ""));
+    File newFile = new File(file.getParent() + '\\' + (newName == null ? System.currentTimeMillis() : newName) + (file.isFile() ? "." + extension : ""));
     log("Rename", file.getAbsolutePath(), newFile.getAbsolutePath());
     file.renameTo(newFile);
     return newFile;
