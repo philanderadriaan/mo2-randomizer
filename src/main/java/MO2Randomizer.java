@@ -8,115 +8,119 @@ import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
+import javax.swing.JOptionPane;
 import javax.swing.UIManager;
 
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZFile;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 
-public class MO2Randomizer
-{
+public class MO2Randomizer {
+  private static final String PROPERTIES_FILE_NAME = "mo2-randomizer.properties";
+  private static final String PROPERTIES_HISTORY_NAME = "history";
 
   private static final Properties PROPERTIES = new Properties();
 
-  private static final String RANDOM = "RANDOM";
-
   private static String selectedVariant = null;
 
-  public static void main(String[] args) throws Exception
-  {
-    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-    PROPERTIES.load(new FileInputStream("mo2-randomizer.properties"));
+  public static void main(String[] args) throws Exception {
+    try {
+      UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+      PROPERTIES.load(new FileInputStream(PROPERTIES_FILE_NAME));
 
-    List<File> sourceModList = new ArrayList<File>();
-    List<File> destinationModList = new ArrayList<File>();
+      List<String> variantHistoryList = new ArrayList<String>(Arrays.asList(PROPERTIES.getProperty(PROPERTIES_HISTORY_NAME).split(",")));
 
-    for (File sourceMod : new File(PROPERTIES.getProperty("source.directory")).listFiles())
-    {
-      sourceModList.add(sourceMod);
-    }
+      for (File sourceGroup : new File(PROPERTIES.getProperty("source.directory")).listFiles()) {
+        File sourceMod = rename(shuffle(sourceGroup).get(0));
 
-    log("Delete");
-    for (File destinationMod : new File(PROPERTIES.getProperty("destination.directory")).listFiles())
-    {
-      if (Arrays.asList(splitTrim(destinationMod.getName())).contains(RANDOM))
-      {
-        destinationModList.add(destinationMod);
-        for (File destinationFile : destinationMod.listFiles())
-        {
-          if (!destinationFile.getName().equalsIgnoreCase("meta.ini"))
-          {
-            log(destinationFile.getAbsolutePath());
-            FileUtils.deleteDirectory(destinationFile);
+        for (File sourcePart : sourceMod.listFiles()) {
+          List<File> sourceArchiveList = shuffle(sourcePart);
+          if (sourceArchiveList.size() <= variantHistoryList.size()) {
+            variantHistoryList.clear();
           }
-        }
-      }
-    }
+          for (File sourceArchive : sourceArchiveList) {
+            String sourceArchiveBaseName = FilenameUtils.getBaseName(sourceArchive.getName());
+            selectedVariant = selectedVariant == null && !variantHistoryList.contains(sourceArchiveBaseName) ? sourceArchiveBaseName : selectedVariant;
 
-    Collections.shuffle(sourceModList);
-    Collections.shuffle(destinationModList);
+            if (sourceArchiveBaseName.equals(selectedVariant)) {
+              File destinationMod = new File(PROPERTIES.getProperty("destination.directory") + "\\RANDOM " + sourceGroup.getName() + sourcePart.getName());
+              log("Delete");
+              for (File destinationFile : destinationMod.listFiles()) {
+                if (!destinationFile.getName().equalsIgnoreCase("meta.ini")) {
+                  log(destinationFile.getAbsolutePath());
+                  FileUtils.deleteDirectory(destinationFile);
+                }
+              }
 
-    for (File destinationMod : destinationModList)
-    {
-      String destinationModName = destinationMod.getName();
-      int randomIndex = destinationModName.indexOf(RANDOM);
-      File selectedMod = null;
+              log("Extract", sourceArchive.getAbsolutePath());
+              SevenZFile zFile = new SevenZFile(sourceArchive);
+              SevenZArchiveEntry zEntry = zFile.getNextEntry();
+              while ((zEntry = zFile.getNextEntry()) != null) {
+                if (!zEntry.isDirectory()) {
+                  log(zEntry.getName());
 
-      for (File sourceMod : sourceModList)
-      {
-        String sourceModName = sourceMod.getName();
-        if (sourceModName.contains(destinationModName.substring(0, randomIndex)))
-        {
-          String variant = splitTrim(sourceModName.substring(randomIndex))[0];
-          selectedVariant = selectedVariant == null ? variant : selectedVariant;
-          if (variant == selectedVariant)
-          {
-            selectedMod = sourceMod;
-            break;
-          }
-        }
-      }
+                  File newFile = new File(destinationMod.getAbsolutePath(), zEntry.getName());
+                  File parentDirectory = newFile.getParentFile();
+                  if (!parentDirectory.exists()) {
+                    parentDirectory.mkdirs();
+                  }
 
-      if (selectedMod != null)
-      {
-        log("Extract", selectedMod.getAbsolutePath());
-        SevenZFile zFile = new SevenZFile(selectedMod);
-        SevenZArchiveEntry zEntry = zFile.getNextEntry();
-        while ((zEntry = zFile.getNextEntry()) != null)
-        {
-          if (!zEntry.isDirectory())
-          {
-            log(zEntry.getName());
-
-            File newFile = new File(destinationMod.getAbsolutePath(), zEntry.getName());
-            File parentDirectory = newFile.getParentFile();
-            if (!parentDirectory.exists())
-            {
-              parentDirectory.mkdirs();
+                  FileOutputStream stream = new FileOutputStream(newFile);
+                  byte[] bytes = new byte[(int) zEntry.getSize()];
+                  zFile.read(bytes, 0, bytes.length);
+                  stream.write(bytes);
+                  stream.close();
+                }
+              }
+              zFile.close();
+              variantHistoryList.add(selectedVariant);
             }
-
-            FileOutputStream stream = new FileOutputStream(newFile);
-            byte[] bytes = new byte[(int) zEntry.getSize()];
-            zFile.read(bytes, 0, bytes.length);
-            stream.write(bytes);
-            stream.close();
           }
         }
-        zFile.close();
+      }
+
+      log(selectedVariant);
+
+      PROPERTIES.put(PROPERTIES_HISTORY_NAME, String.join(",", variantHistoryList));
+      PROPERTIES.store(new FileOutputStream(PROPERTIES_FILE_NAME), null);
+
+    } catch (Exception exception) {
+      JOptionPane.showMessageDialog(null, exception.getMessage(), exception.getClass().toString(), JOptionPane.ERROR_MESSAGE);
+      throw exception;
+    }
+  }
+
+  private static File rename(File file) {
+    String extension = FilenameUtils.getExtension(file.getName());
+    File newFile = new File(file.getParent() + '\\' + System.currentTimeMillis() + (file.isFile() ? "." + extension : ""));
+    log("Rename", file.getAbsolutePath(), newFile.getAbsolutePath());
+    file.renameTo(newFile);
+    return newFile;
+  }
+
+  private static List<File> shuffle(File parent) {
+    List<File> fileList = new ArrayList<File>();
+    for (File file : parent.listFiles()) {
+      String fileName = file.getName();
+      fileName = file.isFile() ? fileName.substring(0, fileName.indexOf('.')) : fileName;
+      try {
+        Long.parseLong(fileName);
+        if (fileName.length() != String.valueOf(System.currentTimeMillis()).length()) {
+
+          fileList.add(file);
+        }
+      } catch (NumberFormatException exception) {
+        fileList.add(file);
       }
     }
-    log(selectedVariant);
+    fileList = fileList.isEmpty() ? Arrays.asList(parent.listFiles()) : fileList;
+    Collections.shuffle(fileList);
+    return fileList;
   }
 
-  private static String[] splitTrim(String s)
-  {
-    return Arrays.stream(s.split("-")).map(String::trim).toArray(String[]::new);
-  }
-
-  private static void log(String... logs)
-  {
-    for (String log : logs)
-    {
+  private static void log(String... logs) {
+    for (String log : logs) {
       System.out.println(new Date() + " " + log);
     }
   }
