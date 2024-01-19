@@ -119,8 +119,7 @@ public class MO2Randomizer {
   }
 
   private static File rename(File file, String newName) {
-    String extension = FilenameUtils.getExtension(file.getName());
-    File newFile = new File(file.getParent() + '\\' + (newName == null ? System.currentTimeMillis() : newName) + (file.isFile() ? "." + extension : ""));
+    File newFile = new File(file.getParent() + '\\' + (newName == null ? System.currentTimeMillis() : newName) + (file.isFile() ? "." + FilenameUtils.getExtension(file.getName()) : ""));
     log("Rename", file.getAbsolutePath(), newFile.getAbsolutePath());
     file.renameTo(newFile);
     return newFile;
