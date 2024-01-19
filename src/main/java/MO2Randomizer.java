@@ -16,10 +16,12 @@ import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZFile;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 
 public class MO2Randomizer {
   private static final String PROPERTIES_FILE_NAME = "mo2-randomizer.properties";
   private static final String PROPERTIES_HISTORY_NAME = "history";
+  private static final String RANDOM_PREFIX = "RANDOM ";
 
   private static final Properties PROPERTIES = new Properties();
 
@@ -38,24 +40,27 @@ public class MO2Randomizer {
 
         for (File sourcePart : sourceMod.listFiles()) {
           List<File> sourceArchiveList = shuffle(sourcePart);
-          destinationModName = "RANDOM" + sourceGroup.getName() + sourcePart.getName();
+          destinationModName = RANDOM_PREFIX + sourceGroup.getName() + sourcePart.getName();
           File destinationMod = new File(PROPERTIES.getProperty("destination.directory") + "\\" + destinationModName);
           if (sourceArchiveList.size() == 1) {
-            File sourceArchive = rename(sourceArchiveList.get(0), null);
+            File sourceArchive = sourceArchiveList.get(0);
             extract(sourceArchive, destinationMod);
           } else {
             if (sourceArchiveList.size() <= variantHistoryList.size()) {
               variantHistoryList.clear();
             }
             for (File sourceArchive : sourceArchiveList) {
-              String sourceArchiveBaseName = FilenameUtils.getBaseName(sourceArchive.getName());
+              // String sourceArchiveBaseName =
+              // FilenameUtils.getBaseName(sourceArchive.getName());
+              String[] substring = PROPERTIES.getProperty("substring").split(",");
+              String currentVariant = StringUtils.substringBetween(sourceArchive.getName(), substring[0], substring[1]);
 
-              if (selectedVariant == null && !variantHistoryList.contains(sourceArchiveBaseName)) {
-                selectedVariant = sourceArchiveBaseName;
+              if (selectedVariant == null && !variantHistoryList.contains(currentVariant)) {
+                selectedVariant = currentVariant;
                 variantHistoryList.add(selectedVariant);
               }
 
-              if (sourceArchiveBaseName.equals(selectedVariant)) {
+              if (currentVariant.equals(selectedVariant)) {
                 extract(sourceArchive, destinationMod);
               }
             }
@@ -88,9 +93,9 @@ public class MO2Randomizer {
       }
     }
 
-    log("Extract", sourceArchive.getAbsolutePath());
+    log("Extract", sourceArchive.getAbsolutePath(), destinationDirectory.getAbsolutePath());
     SevenZFile zFile = new SevenZFile(sourceArchive);
-    SevenZArchiveEntry zEntry = zFile.getNextEntry();
+    SevenZArchiveEntry zEntry;
     while ((zEntry = zFile.getNextEntry()) != null) {
       if (!zEntry.isDirectory()) {
         log(zEntry.getName());
