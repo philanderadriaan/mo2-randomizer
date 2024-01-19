@@ -50,8 +50,6 @@ public class MO2Randomizer {
               variantHistoryList.clear();
             }
             for (File sourceArchive : sourceArchiveList) {
-              // String sourceArchiveBaseName =
-              // FilenameUtils.getBaseName(sourceArchive.getName());
               String[] substring = PROPERTIES.getProperty("substring").split(",");
               String currentVariant = StringUtils.substringBetween(sourceArchive.getName(), substring[0], substring[1]);
 
